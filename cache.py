@@ -81,7 +81,9 @@ class Grid_Cache :
     def center(self, col, row) :
         x = int((row + 0.5) * self.cell_size[0])
         y = int((col + 0.5) * self.cell_size[1])
-        return (x, y)
+        x_in = x if x < self.size[0] - 1 else self.size[0] - 1
+        y_in = y if y < self.size[1] - 1 else self.size[1] - 1
+        return (x_in, y_in)
 
 
     def cache(self, col, row) :
@@ -111,13 +113,14 @@ class Grid_Cache :
         x_diff = pos[0] - center[0] # negative if left of center, positive otherwise
         y_diff = pos[1] - center[1] # negative if above center, positive otherwise
         if y_diff < x_diff and y_diff < -1*x_diff :
-            return self.center(col - 1, row) if col - 1 >= 0 else None
+            n_pos = self.center(col - 1, row) if col - 1 >= 0 else None
         elif x_diff > y_diff :
-            return self.center(col, row + 1) if row + 1 < self.rows else None
+            n_pos = self.center(col, row + 1) if row + 1 < self.rows else None
         elif y_diff > -1*x_diff :
-            return self.center(col + 1, row) if col + 1 < self.cols else None
+            n_pos = self.center(col + 1, row) if col + 1 < self.cols else None
         else :
-            return self.center(col, row - 1) if row - 1 >= 0 else None
+            n_pos = self.center(col, row - 1) if row - 1 >= 0 else None
+        return n_pos
 
 
 
@@ -136,7 +139,7 @@ class Metric_Cache :
         force_reload    = options.get("force_reload", False)
         max_size        = options.get("max_size", None)
         metric          = options.get("metric", "minkowski")
-        thumb_size      = options.get("thumb_size", (800, 800))
+        thumb_size      = options.get("thumb_size", (600, 600))
         # save path and init attributes
         self.path = path
         self.thumb = {}
@@ -146,6 +149,7 @@ class Metric_Cache :
         # Create thumbnail and image
         self.create_thumbnail(path, thumb_size)
         self.create_image(path, max_size, metric)
+        self.save()
 
 
     def get(self, position, radius, options = {}) :
@@ -252,10 +256,3 @@ class Metric_Cache :
             "position_tree" : position_tree,
             "size" : img_data.shape
         }
-
-
-
-
-
-
-# shouldn't be here

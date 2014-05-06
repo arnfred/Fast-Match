@@ -11,6 +11,7 @@ Jonas Toft Arnfred, 2013-05-05
 ####################################
 
 from matchutil import get_features
+from cache import Grid_Cache
 import cv2
 from imaging import get_thumbnail, get_size
 import numpy
@@ -22,6 +23,19 @@ import itertools
 #           Functions              #
 #                                  #
 ####################################
+
+def match(query_cache, target_img, target_path, tau = 0.85, options = {}) :
+    # Get parameters
+    thumb_size = options.get("thumb_size", (400, 400))
+    grid_size = options.get("grid_size", (150, 150))
+    log = options.get("log", None)
+    # Create target cache
+    target_cache = Grid_Cache(target_img, grid_size, get_features)
+    thumb_positions, thumb_ratios = match_thumbs(target_path, query_cache, thumb_size = thumb_size)
+    positions_iter = itertools.chain(thumb_positions[thumb_ratios<tau])
+    # do_iter returns a list of (position, ratio), which is split by zip(*) returning two lists
+    return do_iter(positions_iter, query_cache, target_cache, tau = tau, log = log)
+
 
 def match_thumbs(path, cache, thumb_size = (200, 200)) :
     # Load target and find descriptors and size
@@ -116,6 +130,3 @@ def do_iter(positions, cache, target_grid, tau = 0.85, log = None) :
             for match in zip(result_pos[ratios<tau], ratios[ratios<tau]) :
                 yield match
 
-def match(positions, cache, target_grid, tau = 0.85, log = None) :
-    positions_iter = itertools.chain(positions)
-    return zip(*do_iter(positions_iter, cache, target_grid, tau = tau, log = log))

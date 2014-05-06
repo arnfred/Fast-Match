@@ -24,6 +24,10 @@ def get_features(data, feature_type = "SIFT") :
     if feature_type == "SIFT" :
         return cv2.SIFT().detectAndCompute(data, None)
 
+def get_keypoints(data, feature_type = "SIFT") :
+    if feature_type == "SIFT" :
+        return cv2.SIFT().detect(data)
+
 
 def bf_match(dt1, dt2, k = 1, options = {}) :
     """ Use opencv's matcher to bruteforce nearest neighbors """
