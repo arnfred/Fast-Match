@@ -17,7 +17,7 @@ import os
 import colors
 import fnmatch
 import pylab
-from itertools import chain, imap
+from itertools import chain
 import matchutil
 import imaging
 from cache import Metric_Cache
@@ -29,7 +29,7 @@ from cache import Metric_Cache
 ####################################
 
 
-def evaluate(match_fun, angles, object_type, tau, ground_truth_data = None, options = {}) :
+def evaluate(match_fun, angles, object_type, thresholds, ground_truth_data = None, options = {}) :
     """ Returns number of correct and total matches of match_fun on object:
         match_fun : Function (Function that takes a list of paths and returns matches)
         angles : Int (Rotation in degrees. Must be divisible by 5)
@@ -42,7 +42,7 @@ def evaluate(match_fun, angles, object_type, tau, ground_truth_data = None, opti
     # Get distance_threshold
     distance_threshold      = options.get("distance_threshold", 5)
     verbose                 = options.get("evaluate_verbose", False)
-    metric                  = options.get("metric", "simple")
+    thumb_strategy          = options.get("thumb_strategy", lambda n : n)
 
     # Get paths to the three images
     def get_path(i) : return {
@@ -51,49 +51,33 @@ def evaluate(match_fun, angles, object_type, tau, ground_truth_data = None, opti
             "C" : get_turntable_path(object_type, angles[1] + i*360, "Bottom")
         }
 
+    if verbose :
+        print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
+
     # Get paths
-    def get_matches(i) :
+    def get_match_fun(i) :
         # Collect matches
         paths = get_path(i)
-        query_path = paths["A"]
-        query_cache = Metric_Cache(query_path)
-        target_path = paths["C"]
-        target_img = imaging.open_img(target_path)
-        return match_fun(query_cache, target_img, target_path, tau = tau, options = options)
+        query_path, target_path = paths["A"], paths["C"]
+        query_cache, target_img = Metric_Cache(query_path), imaging.open_img(target_path)
+        return match_fun(query_cache, target_img, options = options)
 
-    # Get match results
-    matches = list(chain(*imap(get_matches, range(3))))
-    if len(matches) > 0 :
-        positions, ratios = zip(*matches)
-    else :
-        positions, ratios = [], []
+    # Get matches
+    match_functions = map(get_match_fun, range(3))
+    apply_threshold = lambda tau : list(chain(*(f(tau, thumb_strategy(tau)) for f in match_functions)))
+    matches = [apply_threshold(tau) for tau in thresholds]
 
-    # Get ground trouth
-    distances = match_distances(positions, angles, object_type, distance_threshold)
+    # Get distances for the highest threshold (they include all other)
+    uniques = { r : p for p, r in chain(*matches) }
+    distances = match_distances(uniques, angles, object_type, distance_threshold)
 
-    if verbose :
-        print("Found %i distances" % (len(distances)))
+    # For each set of matches count correct matches
+    get_count = lambda ms, dt : sum([1 for p,r in ms if distances[r] < dt])
+    correct = numpy.array([get_count(ms, distance_threshold) for ms in matches])
+    total = numpy.array([len(ms) for ms in matches])
+    accuracy = correct / numpy.array(total, dtype=numpy.float)
 
-    # Collect precision per ratio_threshold
-    if metric == "match_count" :
-        def get_count(t, dt) :
-            return len([1 for d, r in zip(distances, ratios) if r < t and d < dt])
-        correct = [get_count(t, distance_threshold) for t in thresholds]
-        total = [get_count(t, 9999999) for t in thresholds]
-        return { "correct" : correct, "total" : total }
-
-    elif metric == "ratio" :
-        correct = [r for d,r in zip(distances, ratios) if d < distance_threshold]
-        return { "correct" : correct, "total" : ratios }
-
-    elif metric == "simple" :
-        correct = len([1 for d, r in zip(distances, ratios) if d < distance_threshold])
-        total = len(ratios)
-        accuracy = (correct / float(total)) if len(ratios) > 0 else 0
-        return { "correct" : correct, "total" : total, "accuracy" : "%.4f" % accuracy }
-
-
-
+    return { "accuracy" : accuracy, "correct" : correct, "total" : total }
 
 
 
@@ -233,7 +217,7 @@ def epilines(img, points, lines, size = (12, 12)) :
 
 
 
-def match_distances(matches, angles, object_type, check_threshold, scale = 1.0) :
+def match_distances(uniques, angles, object_type, check_threshold, scale = 1.0) :
     """ Find the distance of matches as measured against two intersection epipolar lines:
         matches : List[(Pos,Pos)] (List of corresponding coordinates in two images)
         angles : (Int, Int) (two angles in degrees. Must be divisible by 5)
@@ -241,27 +225,29 @@ def match_distances(matches, angles, object_type, check_threshold, scale = 1.0) 
         check_threshold : Float (The threshold for a correct correspondence)
     """
 
+    ratios, positions = uniques.keys(), uniques.values()
+
     # Get points
     path_B = get_turntable_path(object_type, angles[0], "Top")
     points = {
-        "A" : numpy.array([m[0] for m in matches], dtype=numpy.float32),
+        "A" : numpy.array([p[0] for p in positions], dtype=numpy.float32),
         "B" : Metric_Cache(path_B).original["positions"],
-        "C" : numpy.array([m[1] for m in matches], dtype=numpy.float32)
+        "C" : numpy.array([p[1] for p in positions], dtype=numpy.float32)
     }
 
     # Find fundamental matrices
     F = {
-        "AC" : get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Bottom", "Bottom"), scale = 1.0), # Reference view
-        "AB" : get_fundamental_matrix(object_type, (angles[0], angles[0]), ("Bottom", "Top"), scale = 1.0), # Test view
-        "BC" : get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Top", "Bottom"), scale = 1.0) # Auxiliary view
+        "AC" : get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Bottom", "Bottom"), scale = scale), # Reference view
+        "AB" : get_fundamental_matrix(object_type, (angles[0], angles[0]), ("Bottom", "Top"), scale = scale), # Test view
+        "BC" : get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Top", "Bottom"), scale = scale) # Auxiliary view
     }
 
     # return distances
-    return list(calc_match_distances(points, F, check_threshold))
+    return dict(calc_match_distances(points, ratios, F, check_threshold))
 
 
 
-def calc_match_distances(points, F, check_threshold) :
+def calc_match_distances(points, ratios, F, check_threshold) :
     """ Helper function for match_distances()
         Check ground truth for a set of matches given fundamental matrices,
         As proposed in: "Evaluation of Features Detectors and Descriptors
@@ -283,19 +269,21 @@ def calc_match_distances(points, F, check_threshold) :
     lines_AB = get_lines(points["A"], F["AB"])
     lines_AC = get_lines(points["A"], F["AC"])
 
-    for p_A, p_C, l_AB, l_AC in zip(points["A"], points["C"], lines_AB, lines_AC) :
+    for p_A, p_C, l_AB, l_AC, r in zip(points["A"], points["C"], lines_AB, lines_AC, ratios) :
 
         # Is p_C on l_AC?
         AC_dist = dist(l_AC, p_C)
+        min_dist = 999
 
-        # Collect all features in B that are on l_AB:
-        points_B = numpy.array([p_B for p_B in points["B"] if dist(l_AB, p_B) < check_threshold], dtype=numpy.float32)
+        if AC_dist < check_threshold :
+            # Collect all features in B that are on l_AB:
+            points_B = numpy.array([p_B for p_B in points["B"] if dist(l_AB, p_B) < check_threshold], dtype=numpy.float32)
 
-        if AC_dist < check_threshold and len(points_B) > 0 :
-            lines_BC = get_lines(points_B, F["BC"])
-            yield numpy.min([dist(l_BC, p_C) for l_BC in lines_BC])
-        else :
-            yield 999
+            if len(points_B) > 0 :
+                lines_BC = get_lines(points_B, F["BC"])
+                min_dist = numpy.min([dist(l_BC, p_C) for l_BC in lines_BC])
+
+        yield (r, min_dist)
 
 
 def get_image_set(object_type) :

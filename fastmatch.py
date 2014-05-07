@@ -24,23 +24,56 @@ import itertools
 #                                  #
 ####################################
 
-def match(query_cache, target_img, target_path, tau = 0.85, options = {}) :
+def match(query_cache, target_img, options = {}) :
     # Get parameters
     thumb_size = options.get("thumb_size", (400, 400))
-    grid_size = options.get("grid_size", (150, 150))
+    grid_size = options.get("grid_size", (50, 50))
     log = options.get("log", None)
+    grid_margin = options.get("grid_margin", 25)
     # Create target cache
-    target_cache = Grid_Cache(target_img, grid_size, get_features)
-    thumb_positions, thumb_ratios = match_thumbs(target_path, query_cache, thumb_size = thumb_size)
-    positions_iter = itertools.chain(thumb_positions[thumb_ratios<tau])
-    # do_iter returns a list of (position, ratio), which is split by zip(*) returning two lists
-    return do_iter(positions_iter, query_cache, target_cache, tau = tau, log = log)
+    target_cache = Grid_Cache(target_img, grid_size, get_features, margin = grid_margin)
+    thumb_positions, thumb_ratios = match_thumbs(target_img, query_cache, thumb_size = thumb_size)
+    # Create a function where we can wary tau to get different results
+    def get_matches(tau, thumb_tau = None) :
+        thumb_tau = tau if thumb_tau == None else thumb_tau
+        positions_iter = itertools.chain(thumb_positions[thumb_ratios<thumb_tau])
+        matches = do_iter(positions_iter, query_cache, target_cache, tau = tau, log = log)
+        return matches
+    return get_matches
 
 
-def match_thumbs(path, cache, thumb_size = (200, 200)) :
+def do_iter(positions, cache, target_grid, tau = 0.85, log = None) :
+    has_matched = {}
+    found_matches = {}
+    while True :
+        query_pos, target_pos = positions.next()
+        col, row = target_grid.block(target_pos)
+        query_col, query_row = target_grid.block(query_pos)
+        if not has_matched.get((col, row, query_col, query_row), False) :
+            has_matched[(col, row, query_col, query_row)] = True
+            result_pos, ratios = match_position((query_pos, target_pos), cache, target_grid)
+            # For each match we don't discard, we might want to examine the neighbor field
+            get_neighbor = lambda point : target_grid.get_neighbor(target_grid.block(target_pos), point)
+            neighbor_pos = [(p[0], get_neighbor(p[1])) for p in result_pos[ratios<tau] if get_neighbor(p[1]) != None]
+            # Add new neighbor positions to positions
+            if len(neighbor_pos) > 0 :
+                positions = itertools.chain(neighbor_pos, positions)
+            # Log if we have to
+            if log != None :
+                log.append(log_iter(query_pos, target_pos, result_pos, target_grid, ratios, tau))
+            # Yield result if it hasn't been yielded already
+            for p,r in zip(result_pos[ratios<tau], ratios[ratios<tau]) :
+                p_touple = map(int, (p[0,0], p[0,1], p[1,0], p[1,1]))
+                if p_touple not in found_matches.get(r,[]) :
+                    found_matches[r] = found_matches.get(r,[]) + [p_touple]
+                    yield (p,r)
+
+
+
+def match_thumbs(img, cache, thumb_size = (400, 400)) :
     # Load target and find descriptors and size
-    target = get_thumbnail(path, thumb_size)
-    t_orig_size = get_size(path)
+    target = get_thumbnail(img, thumb_size)
+    t_orig_size = get_size(img)
     get_features(target)
     t_keypoints, t_descriptors = get_features(target)
 
@@ -67,6 +100,7 @@ def match_thumbs(path, cache, thumb_size = (200, 200)) :
     # Sort ratios and scale positions
     indices = numpy.argsort(ratios)
     pos_scaled = numpy.array([(q_p * q_ratio, t_p * t_ratio) for q_p, t_p in zip(q_pos, t_pos)])
+
     return pos_scaled[indices], ratios[indices]
 
 
@@ -110,23 +144,3 @@ def log_iter(query_pos, target_pos, result_pos, target_grid, ratios, tau) :
         "radius" : numpy.mean(target_grid.cell_size),
         "ratios" : ratios[ratios<tau],
         "margin" : target_grid.margin }
-
-def do_iter(positions, cache, target_grid, tau = 0.85, log = None) :
-    while True :
-        query_pos, target_pos = positions.next()
-        if not target_grid.is_cached(target_pos) :
-            result_pos, ratios = match_position((query_pos, target_pos), cache, target_grid)
-            # For each match we don't discard, we might want to examine the neighbor field
-            get_neighbor = lambda point : target_grid.get_neighbor(target_grid.block(target_pos), point)
-            neighbor_pos = [(p[0], get_neighbor(p[1])) for p in result_pos[ratios<tau]]
-            neighbor_pos_filtered = numpy.array([p for p in neighbor_pos if p[1] != None])
-            # Add new neighbor positions to positions
-            if len(neighbor_pos_filtered) > 0 :
-                positions = itertools.chain(neighbor_pos_filtered, positions)
-            # Log if we have to
-            if log != None :
-                log.append(log_iter(query_pos, target_pos, result_pos, target_grid, ratios, tau))
-            # Yield result
-            for match in zip(result_pos[ratios<tau], ratios[ratios<tau]) :
-                yield match
-

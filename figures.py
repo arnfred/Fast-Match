@@ -151,8 +151,10 @@ def getRedGreen(f) :
     return c
 
 
-def visualize_log(log, im1, im2, stop_at = None, scale = 0.1, size = (14, 8)) :
+def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8)) :
     # Prepare images
+    if scale == None :
+        scale = min(1.0, 600 / float(im1.shape[1]))
     s = numpy.array([scale, scale])
     im1_size = numpy.array(im1.shape[1::-1] * s, dtype=numpy.uint16)
     im2_size = numpy.array(im2.shape[1::-1] * s, dtype=numpy.uint16)
