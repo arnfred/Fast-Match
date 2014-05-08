@@ -96,7 +96,7 @@ def open_cv(path) :
 
 def open_img(path, size = None) :
     """ If we don't want a thumbnail but might want to rescale image slightly, opencv is faster """
-    if size == None :
+    if size == None or size == -1 :
         return open_cv(path)
     else :
         return scale_cv(path).scale(size)
