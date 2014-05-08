@@ -352,18 +352,18 @@ def dist(line, point) :
 
 
 
-def calc_ground_truth(angles, object_type, lightning_index = 0, return_matches = False, options = {}) :
+def calc_ground_truth(angles, object_type, lightning_index = 0, options = {}) :
     """ Find the amount of total possible correspondences.
         For each feature in A, check if there is a feature in C such that the
         epipolar constraints for a correct match are fulfilled for any point in B:
         angles : (Int, Int) (two angles in degrees. Must be divisible by 5)
         object_type : String (The type of 3d model we are looking at)
-        return_matches : Boolean (set to True to return the correspondences found too)
         options : Dict (Set of parameters for matching etc)
     """
 
-# Get distance_threshold
+    # Get distance_threshold
     distance_threshold  = options.get("distance_threshold", 5)
+    scale = options.get("scale" , 1.0)
 
     # Get paths to the three images
     keypoints_A = keypoints(object_type, angles[0]+360*lightning_index, "Bottom", options)
@@ -371,9 +371,9 @@ def calc_ground_truth(angles, object_type, lightning_index = 0, return_matches =
     keypoints_C = keypoints(object_type, angles[1]+360*lightning_index, "Bottom", options)
 
     # Find fundamental matrices
-    F_AC = get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Bottom", "Bottom"), scale = 2.0)
-    F_AB = get_fundamental_matrix(object_type, (angles[0], angles[0]), ("Bottom", "Top"), scale = 2.0)
-    F_BC = get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Top", "Bottom"), scale = 2.0)
+    F_AC = get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Bottom", "Bottom"), scale = scale)
+    F_AB = get_fundamental_matrix(object_type, (angles[0], angles[0]), ("Bottom", "Top"), scale = scale)
+    F_BC = get_fundamental_matrix(object_type, (angles[0], angles[1]), ("Top", "Bottom"), scale = scale)
 
     # For every point in A find the corresponding lines in B and C
     lines_AB = get_lines(keypoints_A, F_AB)

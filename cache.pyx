@@ -1,3 +1,6 @@
+# encoding: utf-8
+# cython: profile=True
+# filename: cache.pyx
 """
 Cache for storing data about an image used for matching said image later
 
@@ -26,18 +29,6 @@ cimport numpy
 #########################################
 
 cdef class Grid_Cache :
-
-    cdef int rows
-    cdef int cols
-    cdef public int margin
-    cdef int width
-    cdef int height
-    cdef public int cell_width
-    cdef public int cell_height
-    cdef numpy.ndarray data
-    cdef object fun
-    cdef public object last
-    cdef object grid
 
     def __init__(self, numpy.ndarray[numpy.uint8_t, ndim=3] data, cell_size, caching_function = None, int margin = 25) :
         cdef int w, h
@@ -69,27 +60,8 @@ cdef class Grid_Cache :
         # has this grid cell been cached?
         return self.get_cell(col, row)
 
-    cpdef object get_cell(self, int col, int row) :
-        if not self.grid[col].get(row, False) :
-            # If not, cache it and return
-            self.last = self.cache(col, row)
-        return self.grid[col][row]
 
-    cpdef bint is_cached(self, double x, double y) :
-        cdef int col, row
-        col, row = self.block(x, y)
-        if self.grid[col].get(row, False) :
-            return True
-        else :
-            return False
-
-    cpdef object block(self, double x, double y) :
-        # What grid block are we looking for
-        row = int(x / self.cell_width)
-        col = int(y / self.cell_height)
-        return col, row
-
-    cpdef object offset(self, double x, double y) :
+    cpdef offset(self, double x, double y) :
         cdef int col, row, x_min, y_min
         col, row = self.block(x, y)
         x_min = row * self.cell_width - self.margin
@@ -97,15 +69,60 @@ cdef class Grid_Cache :
         return (x_min, y_min)
 
 
-    cpdef object center(self, int col, int row) :
+    cpdef numpy.ndarray[numpy.int_t] get_neighbor(self, int col, int row, double pos_x, double pos_y) :
+        """ Returns the position of the neighboring square in the image.
+        The neighboring square is selected based on the border which the
+        position is closest to in the current image """
+        cdef int x, y, x_diff, y_diff, c_x, c_y
+        cdef numpy.ndarray[numpy.int_t] n_pos, pos_error, center
+        pos_error = numpy.ones(2, dtype=numpy.int) * -1
+        # Find center of block of pos
+        center = self.center(col, row)
+        x, y = center[0], center[1]
+        # Now find where we are relating to center
+        x_diff = int(pos_x) - x # negative if left of center, positive otherwise
+        y_diff = int(pos_y) - y # negative if above center, positive otherwise
+        if y_diff < x_diff and y_diff < -1*x_diff :
+            n_pos = self.center(col - 1, row) if col - 1 >= 0 else pos_error
+        elif x_diff > y_diff :
+            n_pos = self.center(col, row + 1) if row + 1 < self.rows else pos_error
+        elif y_diff > -1*x_diff :
+            n_pos = self.center(col + 1, row) if col + 1 < self.cols else pos_error
+        else :
+            n_pos = self.center(col, row - 1) if row - 1 >= 0 else pos_error
+        return n_pos
+
+
+    cpdef object block(self, double x, double y) :
+        # What grid block are we looking for
+        row = int(x / self.cell_width)
+        col = int(y / self.cell_height)
+        return col, row
+
+
+    cdef object get_cell(self, int col, int row) :
+        if not self.grid[col].get(row, False) :
+            # If not, cache it and return
+            self.last = self.cache(col, row)
+        return self.grid[col][row]
+
+    cdef bint is_cached(self, double x, double y) :
+        cdef int col, row
+        col, row = self.block(x, y)
+        if self.grid[col].get(row, False) :
+            return True
+        else :
+            return False
+
+    cdef numpy.ndarray[numpy.int_t] center(self, int col, int row) :
         x = int((row + 0.5) * self.cell_width)
         y = int((col + 0.5) * self.cell_height)
         x_in = x if x < self.width - 1 else self.width - 1
         y_in = y if y < self.height - 1 else self.height - 1
-        return (x_in, y_in)
+        return numpy.array((x_in, y_in), dtype=numpy.int)
 
 
-    cpdef object cache(self, int col, int row) :
+    cdef object cache(self, int col, int row) :
         cdef int x_min, x_max, y_min, y_max
         cdef numpy.ndarray[numpy.uint8_t, ndim=3] data_cell
         # Find area
@@ -122,26 +139,6 @@ cdef class Grid_Cache :
         return ((x_min, x_max), (y_min, y_max))
 
 
-    cpdef get_neighbor(self, int col, int row, double pos_x, double pos_y) :
-        """ Returns the position of the neighboring square in the image.
-        The neighboring square is selected based on the border which the
-        position is closest to in the current image """
-        cdef int x, y, x_diff, y_diff
-        cdef object n_pos
-        # Find center of block of pos
-        x, y = self.center(col, row)
-        # Now find where we are relating to center
-        x_diff = int(pos_x) - x # negative if left of center, positive otherwise
-        y_diff = int(pos_y) - y # negative if above center, positive otherwise
-        if y_diff < x_diff and y_diff < -1*x_diff :
-            n_pos = self.center(col - 1, row) if col - 1 >= 0 else None
-        elif x_diff > y_diff :
-            n_pos = self.center(col, row + 1) if row + 1 < self.rows else None
-        elif y_diff > -1*x_diff :
-            n_pos = self.center(col + 1, row) if col + 1 < self.cols else None
-        else :
-            n_pos = self.center(col, row - 1) if row - 1 >= 0 else None
-        return n_pos
 
 
 
@@ -153,9 +150,6 @@ cdef class Grid_Cache :
 #########################################
 
 cdef class Metric_Cache :
-    cdef public char* path
-    cdef public object thumb
-    cdef public object original
 
     def __init__(self, char* path, options = {}) :
         """ Caches an image so it's ready for matching """
@@ -177,7 +171,7 @@ cdef class Metric_Cache :
         self.save()
 
 
-    cpdef object get(self, int x, int y, int radius, object options = {}) :
+    def get(self, int x, int y, int radius, object options = {}) :
         """ Retrieve all features within radius of position """
         # Get relevant options and position tree
         cdef numpy.ndarray[object] indices
@@ -195,7 +189,7 @@ cdef class Metric_Cache :
         return self.original["descriptors"][idx], self.original["positions"][idx], self.original["distances"][idx]
 
 
-    cpdef object save(self, char* dir = "data/image_data") :
+    def save(self, char* dir = "data/image_data") :
         """ Exports cache to file """
         # Create unique identifier based on image path
         cdef object h = hashlib.new('ripemd160')
@@ -216,7 +210,7 @@ cdef class Metric_Cache :
         return data_path
 
 
-    cpdef object load(self, char* dir = "data/image_data") :
+    cdef object load(self, char* dir = "data/image_data") :
         """ Loads file to Cache """
         # get hash for path
         cdef object data, data_thumb
@@ -246,7 +240,7 @@ cdef class Metric_Cache :
 
     cdef create_thumbnail(self, char* path, int thumb_x, int thumb_y) :
         """ Get relevant data for thumbnail """
-        cdef numpy.ndarray thumbnail , keypoints, descriptors
+        cdef numpy.ndarray[numpy.uint8_t, ndim=3] thumbnail
         # Create thumbnail
         thumbnail = imaging.get_thumbnail(path, (thumb_x, thumb_y))
         # Get thumbnail features
@@ -254,8 +248,8 @@ cdef class Metric_Cache :
         # Get nearest neighbor within image (vector with touples of feature points and distances)
         matches = matchutil.bf_match(descriptors, descriptors, k = 2)
         # Distances to nearest neighbor and positions
-        nn_distances = [r[1].distance for r in matches]
-        positions = [k.pt for k in keypoints]
+        nn_distances = numpy.array([r[1].distance for r in matches])
+        positions = numpy.array([k.pt for k in keypoints])
         # Collect data
         self.thumb = {
             "descriptors" : descriptors,
@@ -267,7 +261,7 @@ cdef class Metric_Cache :
 
     cdef create_image(self, char* path, int max_size, char* metric) :
         """ Match an image with itself finding the closest neighbors within that image """
-        cdef numpy.ndarray img_data, keypoints, descriptors, distances, positions
+        cdef numpy.ndarray[numpy.uint8_t, ndim=3] img_data
         # Open image
         img_data = imaging.open_img(path, max_size)
         # Get descriptors
