@@ -186,7 +186,7 @@ cdef class Metric_Cache :
                                                    sort_results=sort_results)
         idx = indices[0]
         # Return all features and their positions
-        return self.original["descriptors"][idx], self.original["positions"][idx], self.original["distances"][idx]
+        return self.original["descriptors"][idx], self.original["positions"][idx], self.original["distances"][idx], idx
 
 
     def save(self, char* dir = "data/image_data") :
