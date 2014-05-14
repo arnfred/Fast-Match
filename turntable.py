@@ -12,7 +12,6 @@ Jonas Toft Arnfred, 2013-11-18
 ####################################
 
 import numpy
-from itertools import chain
 from cache import Metric_Cache
 from turntable_ground_truth import get_turntable_path
 import imaging
@@ -63,37 +62,22 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
     # function for counting correct and total
     def get_correct(row) :
         gt = ground_truth["correspondences"][row.name]
-        def gt_int(k) : return [map(int,p) for p in gt.get(k, [])]
+        def gt_int(k) : return [map(int,p) for (p, d) in gt.get(k, [])]
         def pos_int(v) : return map(int, v["positions"][1])
-        def count(matches) : return sum([pos_int(v) in gt_int(k) for k,v in matches.items()])
+        def count(matches) : return sum([pos_int(v) in gt_int(k) for k, v in matches])
         return row.map(count)
     correct = matches_df.apply(get_correct).sum(axis=1)
-
     def get_total(row) :
         gt = ground_truth["correspondences"][row.name]
-        def count(matches) : return sum([len(gt.get(k, [])) > 0 for k in matches.keys()])
+        def count(matches) : return sum([len(gt.get(k, [])) > 0 for k, v in matches])
         return row.map(count)
     total = matches_df.apply(get_total).sum(axis=1)
-
     # Get accuracy
     precision = correct / total
     recall = correct / ground_truth["nb_correspondences"]
 
 
     return { "precision" : precision, "recall" : recall, "correct" : correct, "total" : total }
-    #apply_threshold = lambda tau : list(chain(*((i, f(tau)) for i, f in enumerate(match_functions))))
-    #matches = [apply_threshold(tau) for tau in thresholds]
-
-    ## Compare with ground truth
-    #get_correct = lambda ms, img : sum([1 for p,r,i in ms if is_correct(ground_truth, p, img, i)])
-    #get_total = lambda ms, img : sum([1 for p,r,i in ms if is_counted(ground_truth, p, img, i)])
-
-    ## For each set of matches count correct matches
-    #correct = numpy.array([get_correct(ms, img) for img, ms in matches])
-    #total = numpy.array([get_total(ms, img) for img, ms in matches])
-    #accuracy = correct / numpy.array(total, dtype=numpy.float)
-    #return { "accuracy" : accuracy, "correct" : correct, "total" : total }
-
 
 def is_correct(ground_truth, positions, img, index) :
     gt = ground_truth["correspondences"][img].get(index,[])

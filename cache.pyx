@@ -74,11 +74,10 @@ cdef class Grid_Cache :
         The neighboring square is selected based on the border which the
         position is closest to in the current image """
         cdef int x, y, x_diff, y_diff, c_x, c_y
-        cdef numpy.ndarray[numpy.int_t] n_pos, pos_error, center
+        cdef numpy.ndarray[numpy.int_t] n_pos, pos_error
         pos_error = numpy.ones(2, dtype=numpy.int) * -1
         # Find center of block of pos
-        center = self.center(col, row)
-        x, y = center[0], center[1]
+        x, y = self.center(col, row)
         # Now find where we are relating to center
         x_diff = int(pos_x) - x # negative if left of center, positive otherwise
         y_diff = int(pos_y) - y # negative if above center, positive otherwise

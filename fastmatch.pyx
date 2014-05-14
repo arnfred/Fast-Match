@@ -86,7 +86,7 @@ cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid
                         matches.append((index, { "positions" : p, "ratio" : r }))
         except StopIteration :
             break
-    return dict(matches)
+    return matches
 
 
 cdef object get_neighbors(numpy.ndarray[numpy.double_t] target_pos,
@@ -104,7 +104,7 @@ cdef object get_neighbors(numpy.ndarray[numpy.double_t] target_pos,
 
 
 
-cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache cache, int thumb_x = 400, int thumb_y = 400) :
+cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache query_cache, int thumb_x = 400, int thumb_y = 400) :
     cdef int t_orig_x, t_orig_y
     cdef double t_ratio_x, t_ratio_y, q_ratio_x, q_ratio_y
     cdef numpy.ndarray t_pos, q_pos, q_distances
@@ -115,9 +115,9 @@ cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache 
     t_keypoints, t_descriptors = get_features(target)
 
     # Similar for query
-    q_descriptors = cache.thumb["descriptors"]
-    q_distances = cache.thumb["distances"]
-    q_pos = cache.thumb["positions"]
+    q_descriptors = query_cache.thumb["descriptors"]
+    q_distances = query_cache.thumb["distances"]
+    q_pos = query_cache.thumb["positions"]
     # match thumbnails and find ratio
     matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
     matches = [m for m in matcher.knnMatch(q_descriptors, t_descriptors, k=1) if len(m) > 0]
@@ -129,9 +129,9 @@ cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache 
     t_ratio_y = t_orig_y/float(target.shape[0])
     t_ratio = numpy.array([t_ratio_x, t_ratio_y])
 
-    q_pos = numpy.array([cache.thumb["positions"][m[0].queryIdx] for m in matches])
-    q_ratio_x = cache.original["size"][0]/float(cache.thumb["size"][0])
-    q_ratio_y = cache.original["size"][1]/float(cache.thumb["size"][1])
+    q_pos = numpy.array([query_cache.thumb["positions"][m[0].queryIdx] for m in matches])
+    q_ratio_x = query_cache.original["size"][0]/float(query_cache.thumb["size"][0])
+    q_ratio_y = query_cache.original["size"][1]/float(query_cache.thumb["size"][1])
     q_ratio = numpy.array([q_ratio_x, q_ratio_y])
 
     # Sort ratios and scale positions
@@ -142,14 +142,14 @@ cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache 
 
 
 # Match point strategy #1:
-cdef match_position(pos, Metric_Cache cache, Grid_Cache target, int radius = 100) :
-    cdef numpy.ndarray cache_pos, cache_dis, ratios, positions, ratio_indices
+cdef match_position(pos, Metric_Cache query_cache, Grid_Cache target, int radius = 100) :
+    cdef numpy.ndarray query_cache_pos, query_cache_dis, ratios, positions, ratio_indices
     cdef int r, offset_x, offset_y, target_x, target_y, query_x, query_y
     # Find positions
     query_x, query_y = pos[0]
     target_x, target_y = pos[1]
 
-    cache_ds, cache_pos, cache_dis, cache_idx = cache.get(query_x, query_y, radius)
+    query_ds, query_pos, query_dis, query_idx = query_cache.get(query_x, query_y, radius)
 
     target_kp, target_ds = target.get(target_x, target_y)
     if target_ds == None :
@@ -159,13 +159,14 @@ cdef match_position(pos, Metric_Cache cache, Grid_Cache target, int radius = 100
 
     # Match descriptors using bf
     matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
-    matches = [m for m in matcher.knnMatch(cache_ds, target_ds, k=1) if len(m) > 0]
+    matches = [m for m in matcher.knnMatch(query_ds, target_ds, k=1) if len(m) > 0]
 
     # Distances to nearest neighbor and positions
-    ratios = numpy.array([m[0].distance / cache_dis[m[0].queryIdx] for m in matches])
-    positions = numpy.array([(cache_pos[m[0].queryIdx], target_pos[m[0].trainIdx]) for m in matches])
+    ratios = numpy.array([m[0].distance / query_dis[m[0].queryIdx] for m in matches])
+    positions = numpy.array([(query_pos[m[0].queryIdx], target_pos[m[0].trainIdx]) for m in matches])
+    indices = numpy.array([query_idx[m[0].queryIdx] for m in matches])
 
-    return positions, ratios, cache_idx
+    return positions, ratios, indices
 
 
 cdef log_round(numpy.ndarray query_pos, numpy.ndarray target_pos, numpy.ndarray result_pos, Grid_Cache target_grid, numpy.ndarray ratios, double tau, int radius) :
