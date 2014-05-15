@@ -32,47 +32,51 @@ from cache cimport Metric_Cache, Grid_Cache
 def match(Metric_Cache query_cache, numpy.ndarray[numpy.uint8_t, ndim=3] target_img, object options = {}) :
     # Declare datatypes
     cdef int thumb_x, thumb_y, grid_x, grid_y, grid_margin, radius
-    cdef double thumb_tau
+    cdef double thumb_tau, neighbor_tau
     cdef numpy.ndarray thumb_positions, thumb_ratios, positions_iter
     # Get parameters
     thumb_x, thumb_y = options.get("thumb_size", (400, 400))
     grid_x, grid_y = options.get("grid_size", (50, 50))
     thumb_strategy = options.get("thumb_strategy", lambda n : n)
+    neighbor_strategy = options.get("neighbor_strategy", lambda n : n)
     log = options.get("log", None)
     grid_margin = options.get("grid_margin", 25)
     radius = options.get("radius", 100)
     # Create target cache
-    cdef Grid_Cache target_cache = Grid_Cache(target_img, (grid_x, grid_y), get_features, margin = grid_margin)
+    cdef Grid_Cache target_cache = Grid_Cache(target_img, (grid_x, grid_y), margin = grid_margin)
     thumb_positions, thumb_ratios = match_thumbs(target_img, query_cache, thumb_x = thumb_x, thumb_y = thumb_y)
     # Create a function where we can wary tau to get different results
     def get_matches(double tau) :
+        neighbor_tau = neighbor_strategy(tau)
         thumb_tau = thumb_strategy(tau)
         positions_iter = itertools.chain(thumb_positions[thumb_ratios<thumb_tau])
-        matches = do_iter(positions_iter, query_cache, target_cache, tau = tau, thumb_tau = thumb_tau, radius = radius, log = log)
+        matches = do_iter(positions_iter, query_cache, target_cache, tau = tau, neighbor_tau = neighbor_tau, radius = radius, log = log)
         return matches
     return get_matches
 
 
-cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid, double tau, double thumb_tau, int radius, object log = None) :
+cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid, double tau, double neighbor_tau, int radius, object log = None) :
     # Declare datatypes
     cdef numpy.ndarray[numpy.double_t] query_pos, target_pos
     cdef numpy.ndarray[numpy.double_t, ndim=2] p
     cdef numpy.ndarray result_pos, ratios
-    cdef int col, row, query_col, query_row
+    cdef int col, row, query_col, query_row, round_nb
     cdef double r
     matches = []
     has_matched = {}
     found_matches = {}
+    round_nb = 1
     while True :
         try :
             query_pos, target_pos = positions.next()
-            col, row = target_grid.block(target_pos[0], target_pos[1])
-            query_col, query_row = target_grid.block(query_pos[0], query_pos[1])
-            if not has_matched.get((col, row, query_col, query_row), False) :
-                has_matched[(col, row, query_col, query_row)] = True
+            row, col = target_grid.block(target_pos[0], target_pos[1])
+            query_row, query_col = target_grid.block(query_pos[0], query_pos[1])
+            if not has_matched.get((row, col, query_row, query_col), False) :
+                has_matched[(row, col, query_row, query_col)] = True
                 result_pos, ratios, query_idx = match_position((query_pos, target_pos), cache, target_grid, radius = radius)
                 # For each match we don't discard, we might want to examine the neighbor field
-                neighbors = get_neighbors(target_pos, result_pos[ratios<tau], target_grid)
+                #print("Round %i: \t%s \t%s" % (round_nb, target_pos, ratios))
+                neighbors = get_neighbors(target_pos, result_pos[ratios < neighbor_tau], target_grid)
                 if len(neighbors) > 0 :
                     positions = itertools.chain(neighbors, positions)
                 # Log if we have to
@@ -84,6 +88,7 @@ cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid
                     if p_touple not in found_matches.get(r,[]) :
                         found_matches[r] = found_matches.get(r,[]) + [p_touple]
                         matches.append((index, { "positions" : p, "ratio" : r }))
+                round_nb += 1
         except StopIteration :
             break
     return matches
@@ -94,11 +99,10 @@ cdef object get_neighbors(numpy.ndarray[numpy.double_t] target_pos,
                          Grid_Cache target_grid) :
     cdef int col, row
     cdef numpy.ndarray[numpy.int_t] neighbor_pos
-    col, row = target_grid.block(target_pos[0], target_pos[1])
+    row, col = target_grid.block(target_pos[0], target_pos[1])
     neighbors = []
     for p_query, p_target in result_pos :
-        neighbor_pos = target_grid.get_neighbor(col, row, p_target[0], p_target[1])
-        if neighbor_pos[0] != -1 :
+        for neighbor_pos in target_grid.get_neighbor(row, col, p_target[0], p_target[1]) :
             neighbors.append(numpy.array((p_query, neighbor_pos)))
     return neighbors
 
@@ -144,18 +148,16 @@ cdef object match_thumbs(numpy.ndarray[numpy.uint8_t, ndim=3] img, Metric_Cache 
 # Match point strategy #1:
 cdef match_position(pos, Metric_Cache query_cache, Grid_Cache target, int radius = 100) :
     cdef numpy.ndarray query_cache_pos, query_cache_dis, ratios, positions, ratio_indices
-    cdef int r, offset_x, offset_y, target_x, target_y, query_x, query_y
+    cdef int r, target_x, target_y, query_x, query_y
     # Find positions
     query_x, query_y = pos[0]
     target_x, target_y = pos[1]
 
     query_ds, query_pos, query_dis, query_idx = query_cache.get(query_x, query_y, radius)
 
-    target_kp, target_ds = target.get(target_x, target_y)
-    if target_ds == None :
+    target_pos, target_ds = target.get(target_x, target_y)
+    if target_ds == None or query_ds == None or len(target_ds) == 0 or len(query_ds) == 0 :
         return numpy.array([]), numpy.array([]), numpy.array([])
-    offset_x, offset_y = target.offset(target_x, target_y)
-    target_pos = [numpy.array([k.pt[0]+offset_x, k.pt[1]+offset_y]) for k in target_kp]
 
     # Match descriptors using bf
     matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
@@ -173,7 +175,8 @@ cdef log_round(numpy.ndarray query_pos, numpy.ndarray target_pos, numpy.ndarray 
     return {
         "query_pos" : query_pos,
         "target_pos" : target_pos,
-        "target_grid" : target_grid.last,
+        "target_cell" : target_grid.last_cell,
+        "target_block" : target_grid.last_block,
         "matches" : result_pos[ratios<tau],
         "radius" : radius,
         "ratios" : ratios[ratios<tau],

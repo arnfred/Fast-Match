@@ -151,7 +151,7 @@ def getRedGreen(f) :
     return c
 
 
-def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8)) :
+def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8), filename = None) :
     # Prepare images
     if scale == None :
         scale = min(1.0, 600 / float(im1.shape[1]))
@@ -185,11 +185,14 @@ def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8)) :
         if stop_at != None and i > stop_at :
             break
         # Plot target grid
-        ((x_min, x_max), (y_min, y_max)) = d["target_grid"]
-        margin = d["margin"]
+        ((x_min_cell, x_max_cell), (y_min_cell, y_max_cell)) = d["target_cell"]
+        ((x_min_block, x_max_block), (y_min_block, y_max_block)) = d["target_block"]
+        #margin = d["margin"]
         # Add square
-        ax.add_patch(pylab.Rectangle( translate_point((x_min + margin, y_min + margin), "im2"),
-                               (x_max-x_min - 2*margin) * scale, (y_max-y_min - 2*margin) * scale, fill = False))
+        ax.add_patch(pylab.Rectangle( translate_point((x_min_cell, y_min_cell), "im2"),
+                               (x_max_cell-x_min_cell) * scale, (y_max_cell-y_min_cell) * scale, color="#0055aa", fill = False))
+        ax.add_patch(pylab.Rectangle( translate_point((x_min_block+2, y_min_block+2), "im2"),
+                               (x_max_block-x_min_block-4) * scale, (y_max_block-y_min_block-4) * scale, color="#000055", fill = False))
         # Add circle
         ax.add_patch(pylab.Circle( translate_point(d["query_pos"], "im1"), d["radius"] * scale, fill = False, linewidth = 0.5))
         # Add matches
@@ -201,3 +204,5 @@ def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8)) :
     # Limit figure to area around im3
     pylab.xlim(0,im3.shape[1])
     pylab.ylim(im3.shape[0],0)
+    if filename != None :
+        fig.savefig("%s_%i.png" % (filename, stop_at), bbox_inches='tight', dpi=72)

@@ -14,20 +14,22 @@ cdef class Grid_Cache :
     cdef int height
     cdef public int cell_width
     cdef public int cell_height
+    cdef public int block_width
+    cdef public int block_height
     cdef numpy.ndarray data
-    cdef object fun
-    cdef public object last
+    cdef public object last_cell
+    cdef public object last_block
     cdef object grid
     # Methods
+    cdef object frame(self, int col, int row, int width, int height)
     cdef object get_cell(self, int col, int row)
-    cdef bint is_cached(self, double x, double y)
     cdef numpy.ndarray[numpy.int_t] center(self, int col, int row)
     cdef object cache(self, int col, int row)
     cpdef object block(self, double x, double y)
-    cpdef offset(self, double x, double y)
+    cdef object cell(self, double x, double y)
     cpdef get(self, double x, double y)
-    cpdef numpy.ndarray[numpy.int_t] get_neighbor(self, int col, int row, double pos_x, double pos_y)
 
+    cpdef object get_neighbor(self, int col, int row, double pos_x, double pos_y)
 
 cdef class Metric_Cache :
     cdef public char* path

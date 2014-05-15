@@ -30,112 +30,188 @@ cimport numpy
 
 cdef class Grid_Cache :
 
-    def __init__(self, numpy.ndarray[numpy.uint8_t, ndim=3] data, cell_size, caching_function = None, int margin = 25) :
+    def __init__(self, numpy.ndarray[numpy.uint8_t, ndim=3] data, cell_size, int margin = 25, int factor = 3) :
         cdef int w, h
         # Get rows and cols
         self.width = data.shape[1]
         self.height = data.shape[0]
         self.cell_width = cell_size[0]
         self.cell_height = cell_size[1]
-        w, h = self.width, self.height
-        self.rows = int(w / cell_size[0]) + 1
-        self.cols = int(h / cell_size[1]) + 1
+        self.block_width = cell_size[0]/factor
+        self.block_height = cell_size[1]/factor
         self.data = data
-        self.fun = caching_function
-        self.last = None
+        self.last_cell = None
+        self.last_block = None
         self.margin = margin
-
         # Initialize grid
-        self.grid = {n:{} for n in range(self.cols)}
+        self.grid = {n:{} for n in range(self.height / self.cell_height + 1)}
+
 
     cpdef get(self, double x, double y) :
         # Check that pos is within bounds
-        cdef int w, h, col, row
-
+        cdef int w, h, cell_row, cell_col, block_row, block_col, x_min, x_max, y_min, y_max, m
+        cdef numpy.ndarray pos_filter, descriptors, positions # descriptors have a weird type which isn't numpy.float_t
         w, h = self.width, self.height
         if x > w or y > h :
             raise Exception("(%i,%i) is outside data bounds of (%i,%i)" % (x,y, self.width, self.height))
-        # What grid block are we looking for
-        col, row = self.block(x, y)
-        # has this grid cell been cached?
-        return self.get_cell(col, row)
+        # Store what cell we are in for logging purposes
+        cell_row, cell_col = self.cell(x, y)
+        block_row, block_col = self.block(x, y)
+        self.last_cell = self.frame(cell_row, cell_col, self.cell_height, self.cell_width)
+        self.last_block = self.frame(block_row, block_col, self.block_width, self.block_height)
+        (x_min, x_max), (y_min, y_max) = self.last_block
+        # Get keypoints and descriptors
+        positions, descriptors = self.get_cell(cell_row, cell_col)
+        if len(positions) == 0 :
+            return positions, descriptors
+        # Only return those in the correct block
+        m = self.margin
+        pos_filter = (positions > [x_min - m, y_min - m]).all(1) & (positions < [x_max + m, y_max + m]).all(1)
+        return positions[pos_filter], descriptors[pos_filter]
 
 
-    cpdef offset(self, double x, double y) :
-        cdef int col, row, x_min, y_min
-        col, row = self.block(x, y)
-        x_min = row * self.cell_width - self.margin
-        y_min = col * self.cell_height - self.margin
-        return (x_min, y_min)
-
-
-    cpdef numpy.ndarray[numpy.int_t] get_neighbor(self, int col, int row, double pos_x, double pos_y) :
+    cpdef object get_neighbor(self, int row, int col, double pos_x, double pos_y) :
         """ Returns the position of the neighboring square in the image.
         The neighboring square is selected based on the border which the
-        position is closest to in the current image """
-        cdef int x, y, x_diff, y_diff, c_x, c_y
-        cdef numpy.ndarray[numpy.int_t] n_pos, pos_error
-        pos_error = numpy.ones(2, dtype=numpy.int) * -1
-        # Find center of block of pos
-        x, y = self.center(col, row)
-        # Now find where we are relating to center
-        x_diff = int(pos_x) - x # negative if left of center, positive otherwise
-        y_diff = int(pos_y) - y # negative if above center, positive otherwise
-        if y_diff < x_diff and y_diff < -1*x_diff :
-            n_pos = self.center(col - 1, row) if col - 1 >= 0 else pos_error
-        elif x_diff > y_diff :
-            n_pos = self.center(col, row + 1) if row + 1 < self.rows else pos_error
-        elif y_diff > -1*x_diff :
-            n_pos = self.center(col + 1, row) if col + 1 < self.cols else pos_error
+        position is closest to in the current image
+        +---+---+---+
+        | 1 | 2 | 3 |
+        +---+---+---+
+        | 4 | 5 | 6 |
+        +---+---+---+
+        | 7 | 8 | 9 |
+        +---+---+---+
+        """
+        cdef int x, y, x_diff, y_diff, c_x, c_y, w, h, square, rows, cols
+        w, h = self.block_width, self.block_height
+        x, y = w*col, h*row
+        x_diff = int(pos_x) - x
+        y_diff = int(pos_y) - y
+        # Are we in square 1,2 or 3?
+        if y_diff < h / 3 :
+            if x_diff < w / 3 :
+                square = 1
+            elif x_diff < (w / 3) * 2 :
+                square = 2
+            else :
+                square = 3
+        # Are we in square 4,5 or 6?
+        elif y_diff < (h / 3) * 2 :
+            if x_diff < w / 3 :
+                square = 4
+            elif x_diff < (w / 3) * 2 :
+                square = 5
+            else :
+                square = 6
+        # Must be in square 7,8 or 9?
         else :
-            n_pos = self.center(col, row - 1) if row - 1 >= 0 else pos_error
-        return n_pos
+            if x_diff < w / 3 :
+                square = 7
+            elif x_diff < (w / 3) * 2 :
+                square = 8
+            else :
+                square = 9
+
+        # Now for each square, specify the appropriate neighbors
+        neighbors_square = {
+            1 : [4,2,1],
+            2 : [1,2,3],
+            3 : [2,3,6],
+            4 : [1,4,7],
+            5 : [],
+            6 : [3,6,9],
+            7 : [4,7,8],
+            8 : [7,8,9],
+            9 : [6,8,9]
+        }
+        square_to_block = {
+            1 : (row - 1, col - 1),
+            2 : (row - 1, col),
+            3 : (row - 1, col + 1),
+            4 : (row, col - 1),
+            6 : (row, col + 1),
+            7 : (row + 1, col - 1),
+            8 : (row + 1, col),
+            9 : (row + 1, col + 1)
+        }
+
+        neighbor_blocks = [square_to_block[b] for b in neighbors_square[square]]
+        # Check that neighbors are within image frame
+        cols = self.width / self.block_width + 1
+        rows = self.height / self.block_height + 1
+        neighbors_checked = [(row, col) for (row, col) in neighbor_blocks if (row > 0 and col > 0 and
+                                                                        col < cols and row < rows)]
+        # For each neighbor map to position
+        neighbor_pos = [self.center(row, col) for row,col in neighbors_checked]
+        #print("diff: (%i, %i) of block width of (%i, %i) which puts us in square %i\nPositions: %s" % (x_diff, y_diff, self.block_width, self.block_height, square, neighbor_pos))
+        return neighbor_pos
 
 
     cpdef object block(self, double x, double y) :
+        cdef int row, col
         # What grid block are we looking for
-        row = int(x / self.cell_width)
-        col = int(y / self.cell_height)
-        return col, row
+        row = int(y / self.block_height)
+        col = int(x / self.block_width)
+        return row, col
+
+    cdef object cell(self, double x, double y) :
+        cdef int row, col
+        row = int(y / self.cell_height)
+        col = int(x / self.cell_width)
+        return row, col
+
+    cdef object frame(self, int row, int col, int width, int height) :
+        cdef int x_min, x_max, y_min, y_max
+        x_min, x_max = col * width, (col + 1) * width
+        y_min, y_max = row * height, (row + 1) * height
+        return (x_min, x_max), (y_min, y_max)
 
 
-    cdef object get_cell(self, int col, int row) :
-        if not self.grid[col].get(row, False) :
+
+    cdef object get_cell(self, int row, int col) :
+        if not self.grid[row].get(col, False) :
             # If not, cache it and return
-            self.last = self.cache(col, row)
-        return self.grid[col][row]
+            self.cache(row, col)
+        return self.grid[row][col]
 
-    cdef bint is_cached(self, double x, double y) :
-        cdef int col, row
-        col, row = self.block(x, y)
-        if self.grid[col].get(row, False) :
-            return True
-        else :
-            return False
-
-    cdef numpy.ndarray[numpy.int_t] center(self, int col, int row) :
-        x = int((row + 0.5) * self.cell_width)
-        y = int((col + 0.5) * self.cell_height)
+    cdef numpy.ndarray[numpy.int_t] center(self, int row, int col) :
+        cdef x, y, x_in, y_in
+        x = int((col + 0.5) * self.block_width)
+        y = int((row + 0.5) * self.block_height)
         x_in = x if x < self.width - 1 else self.width - 1
         y_in = y if y < self.height - 1 else self.height - 1
         return numpy.array((x_in, y_in), dtype=numpy.int)
 
 
-    cdef object cache(self, int col, int row) :
-        cdef int x_min, x_max, y_min, y_max
+    cdef object cache(self, int row, int col) :
+        cdef int x_min, x_max, y_min, y_max, w, h, rows, cols
+        cdef int x_min_margin, x_max_margin, y_min_margin, y_max_margin
         cdef numpy.ndarray[numpy.uint8_t, ndim=3] data_cell
+        cdef numpy.ndarray positions
+        w, h = self.cell_width, self.cell_height
         # Find area
-        x_min = row * self.cell_width - (self.margin * (row > 0))
-        x_max = x_min + self.cell_width + self.margin * 2 if row+1 < self.rows else self.width
-        y_min = col * self.cell_height - (self.margin * (col > 0))
-        y_max = y_min + self.cell_height + self.margin * 2 if col+1 < self.cols else self.height
+        cols = int(self.width / self.cell_width) + 1
+        rows = int(self.height / self.cell_height) + 1
+        x_min = col * w
+        x_max = x_min + w if col+1 < cols else self.width
+        y_min = row * h
+        y_max = y_min + h if row+1 < rows else self.height
+        # Find margin
+        x_min_margin = self.margin * (col > 0)
+        x_max_margin = self.margin if self.width - x_max > self.margin else self.width - x_max
+        y_min_margin = self.margin * (row > 0)
+        y_max_margin = self.margin if self.height - y_max > self.margin else self.height - y_max
         # Extract data, compute cache value and add it to grid
-        data_cell = self.data[y_min:y_max, x_min:x_max,:]
-        if self.fun == None :
-            self.grid[col][row] = data_cell
-        else :
-            self.grid[col][row] = self.fun(data_cell)
-        return ((x_min, x_max), (y_min, y_max))
+        data_cell = self.data[y_min-y_min_margin:y_max + y_max_margin, x_min-x_min_margin:x_max+x_max_margin,:]
+        # Filter keypoints so those that are in the margin aren't included
+        keypoints, descriptors = matchutil.get_features(data_cell)
+        if keypoints == None or descriptors == None :
+            keypoints = []
+            descriptors = []
+
+        positions = numpy.array([[k.pt[0] + x_min - x_min_margin, k.pt[1] + y_min - y_min_margin] for k in keypoints])
+        self.grid[row][col] = positions, numpy.array(descriptors, dtype=numpy.uint8)
+
 
 
 
@@ -274,7 +350,7 @@ cdef class Metric_Cache :
         position_tree = BallTree(positions, metric = metric)
         # Collect data
         self.original = {
-            "descriptors" : descriptors,
+            "descriptors" : numpy.array(descriptors, dtype=numpy.uint8),
             "positions" : positions,
             "distances" : distances,
             "position_tree" : position_tree,

@@ -24,9 +24,14 @@ def get_features(data, feature_type = "SIFT") :
     if feature_type == "SIFT" :
         return cv2.SIFT().detectAndCompute(data, None)
 
-def get_keypoints(data, feature_type = "SIFT") :
-    if feature_type == "SIFT" :
+def get_keypoints(data, keypoint_type = "SIFT") :
+    if keypoint_type == "SIFT" :
         return cv2.SIFT().detect(data)
+
+def get_descriptors(data, keypoints, descriptor_type = "SIFT") :
+    if descriptor_type == "SIFT" :
+        feature = cv2.DescriptorExtractor_create(descriptor_type)
+        return feature.compute(data, keypoints)
 
 
 def bf_match(dt1, dt2, k = 1, options = {}) :
