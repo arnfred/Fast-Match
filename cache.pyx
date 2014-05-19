@@ -211,7 +211,7 @@ cdef class Grid_Cache :
 
     #@cython.profile(False)
     cdef Grid_Pos block(self, Pos p) :
-        return Grid_Pos(int(p.y / self.block_size.h), int(p.x / self.block_size.w))
+        return Grid_Pos(int(p.y) / self.block_size.h, int(p.x) / self.block_size.w)
 
     #@cp.ython.profile(False)
     cdef Grid_Pos cell(self, Pos p) :

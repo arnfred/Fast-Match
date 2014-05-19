@@ -60,6 +60,9 @@ def flann_match(dt1, dt2, k = 1, options = {}) :
     index_params = dict(algorithm = algorithm, trees = trees)
     search_params = dict(checks = checks)
     flann = cv2.FlannBasedMatcher(index_params, search_params)
+    print(k)
+    print(type(dt1))
+    print(type(dt2))
 
     # Match features
-    return flann.knnMatch(dt1, dt2, k = k)
+    return flann.knnMatch(dt1, dt2, k)

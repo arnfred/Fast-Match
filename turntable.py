@@ -44,8 +44,8 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
             "C" : get_turntable_path(object_type, angles[1] + i*360, "Bottom")
         }
 
-    #if verbose :
-        #print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
+    if verbose :
+        print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
 
     # Get paths
     def get_match_fun(i) :

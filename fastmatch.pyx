@@ -21,7 +21,7 @@ import itertools
 cimport numpy
 from cache cimport Metric_Cache, Grid_Cache, Pos, Grid_Pos
 from cache import Grid_Cache, Metric_Cache
-
+from libc.math cimport abs as abs_c
 
 ####################################
 #                                  #
@@ -51,44 +51,36 @@ def match(Metric_Cache query_cache, numpy.ndarray[numpy.uint8_t, ndim=3] target_
     def get_matches(double tau) :
         neighbor_tau = neighbor_strategy(tau)
         thumb_tau = thumb_strategy(tau)
-        positions_iter = itertools.chain(thumb_positions[thumb_ratios<thumb_tau])
-        matches = do_iter(positions_iter, query_cache, target_cache, tau = tau, neighbor_tau = neighbor_tau, radius = radius, dist_threshold = dist_threshold, depth_first = depth_first, log = log)
+        positions = itertools.chain(thumb_positions[thumb_ratios<thumb_tau])
+        matches = do_iter(positions, query_cache, target_cache, tau = tau, neighbor_tau = neighbor_tau, radius = radius, dist_threshold = dist_threshold, depth_first = depth_first, log = log)
         return matches
     return get_matches
 
 
 cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid, double tau, double neighbor_tau, int radius, int dist_threshold, depth_first = True, object log = None) :
     # Declare datatypes
-    cdef numpy.ndarray[numpy.double_t] current_pos, ratios, pos, query_pos
+    cdef numpy.ndarray[numpy.double_t] current_pos, ratios, pos
     cdef numpy.ndarray[numpy.double_t, ndim=2] result_pos
-    cdef numpy.ndarray indices, empty
-    cdef Grid_Pos target_block, query_block
+    cdef numpy.ndarray indices
+    cdef Grid_Pos target_block
     cdef Pos p_neighbor
-    cdef int round_nb, index, row, col
+    cdef int round_nb, index
     cdef double r
     matches = []
     has_matched = {}
     found_matches = {}
     round_nb = 1
-    empty = numpy.empty(0)
     while True :
         try :
             current_pos = positions.next()
-            query_pos = current_pos[:2]
-            query_block = target_grid.block(Pos(current_pos[0], current_pos[1]))
-            target_block = target_grid.block(Pos(current_pos[2], current_pos[3]))
-            row, col = target_block.row, target_block.col
-            # Check if we've matched these blocks before
-            last_positions = has_matched.get((row, col), empty)
-            if len(last_positions) == 0 or min_dist(last_positions, query_pos) > dist_threshold :
-                update_positions = numpy.append(has_matched.get((row, col), empty), query_pos)
-                has_matched[(row, col)] = update_positions.reshape((update_positions.size / 2, 2))
+            if is_new_match(has_matched, current_pos, target_grid, dist_threshold) :
+                target_block = target_grid.block(Pos(current_pos[2], current_pos[3]))
                 # Match blocks and find all neighbors
                 result_pos, ratios, query_idx = match_position(current_pos, cache, target_grid, radius = radius)
                 neighbors = []
                 for pos in result_pos[ratios < neighbor_tau] : # pos is in format [query_x, query_y, target_x, target_y]
                     for p_neighbor in target_grid.get_neighbor(target_block, Pos(pos[2],pos[3])) :
-                        neighbors.append(numpy.concatenate((pos[0:2], (p_neighbor.x, p_neighbor.y))))
+                        neighbors.append(numpy.array((pos[0], pos[1], p_neighbor.x, p_neighbor.y)))
                 if depth_first : # Explore matches depth first
                     positions = itertools.chain(neighbors, positions)
                 else : # explore matches breadth first
@@ -109,12 +101,31 @@ cdef object do_iter(object positions, Metric_Cache cache, Grid_Cache target_grid
     return matches
 
 
-cdef double min_dist(numpy.ndarray[numpy.double_t, ndim=2] last_positions, numpy.ndarray[numpy.double_t] cur_pos) :
-    cdef numpy.ndarray[numpy.double_t, ndim=2] vectors
-    cdef numpy.ndarray[numpy.double_t, ndim=1] distances
-    vectors = last_positions - cur_pos
-    distances = numpy.sum(numpy.abs(vectors), axis=1)
-    return numpy.min(distances)
+cdef bint is_new_match(object has_matched, numpy.ndarray[numpy.double_t] current_pos, Grid_Cache target_grid, int dist_threshold) :
+    cdef numpy.ndarray[numpy.double_t] query_pos, update_positions
+    cdef numpy.ndarray[numpy.double_t, ndim=2] last_positions, empty
+    cdef Grid_Pos target_block, query_block
+    cdef int round_nb, index, row, col
+    empty = numpy.empty((0,0))
+    query_pos = current_pos[:2]
+    target_block = target_grid.block(Pos(current_pos[2], current_pos[3]))
+    row, col = target_block.row, target_block.col
+    # Check if we've matched these blocks before
+    last_positions = has_matched.get((row, col), empty)
+    if last_positions.size == 0 or above_dist_threshold(last_positions, query_pos, dist_threshold) :
+        update_positions = numpy.append(last_positions, query_pos)
+        has_matched[(row, col)] = update_positions.reshape((update_positions.size / 2, 2))
+        return True
+    return False
+
+
+cdef bint above_dist_threshold(numpy.ndarray[numpy.double_t, ndim=2] last_positions, numpy.ndarray[numpy.double_t] cur_pos, int dist_threshold) :
+    cdef numpy.ndarray[numpy.double_t] pos
+    for i in range(last_positions.shape[0]) :
+        pos = last_positions[i] - cur_pos
+        if (abs_c(pos[0]) + abs_c(pos[1])) < dist_threshold :
+            return False
+    return True
 
 
 
