@@ -44,8 +44,8 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
             "C" : get_turntable_path(object_type, angles[1] + i*360, "Bottom")
         }
 
-    if verbose :
-        print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
+    #if verbose :
+        #print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
 
     # Get paths
     def get_match_fun(i) :
@@ -58,19 +58,21 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
     # Get matches
     match_funs = map(get_match_fun, range(3))
     matches_df = pd.DataFrame({ img : { tau : f(tau) for tau in thresholds } for img, f in enumerate(match_funs) })
+    print(range(1))
 
     # function for counting correct and total
     def get_correct(row) :
         gt = ground_truth["correspondences"][row.name]
         def gt_int(k) : return [map(int,p) for (p, d) in gt.get(k, [])]
         def pos_int(v) : return map(int, v["positions"][1])
-        def count(matches) : return sum([pos_int(v) in gt_int(k) for k, v in matches])
-        return row.map(count)
+        def count_correct(matches) : return sum([pos_int(v) in gt_int(k) for k, v in matches])
+        return row.map(count_correct)
     correct = matches_df.apply(get_correct).sum(axis=1)
     def get_total(row) :
         gt = ground_truth["correspondences"][row.name]
-        def count(matches) : return sum([len(gt.get(k, [])) > 0 for k, v in matches])
-        return row.map(count)
+        def count_total(matches) :
+            return sum([len(gt.get(k, [])) > 0 for k, v in matches])
+        return row.map(count_total)
     total = matches_df.apply(get_total).sum(axis=1)
     # Get accuracy
     precision = correct / total

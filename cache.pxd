@@ -5,31 +5,45 @@ Jonas Toft Arnfred, 2013-05-08
 """
 cimport numpy
 
-cdef class Grid_Cache :
+cdef class Grid_Pos :
+    cdef int row, col
 
+cdef class Pos :
+    cdef int x, y
+
+cdef class Size :
+    cdef int w, h
+
+cdef class Pos_Pair :
+    cdef Pos query, target
+
+cdef class Frame :
+    cdef int x_min, x_max, y_min, y_max
+
+cdef class Grid_Cache :
     cdef int rows
     cdef int cols
     cdef public int margin
+    cdef Size img_size
     cdef int width
     cdef int height
-    cdef public int cell_width
-    cdef public int cell_height
-    cdef public int block_width
-    cdef public int block_height
+    cdef public Size cell_size
+    cdef public Size block_size
     cdef numpy.ndarray data
-    cdef public object last_cell
-    cdef public object last_block
-    cdef object grid
+    cdef public Frame last_cell
+    cdef public Frame last_block
+    cdef object cells
+    cdef object blocks
     # Methods
-    cdef object frame(self, int col, int row, int width, int height)
-    cdef object get_cell(self, int col, int row)
-    cdef numpy.ndarray[numpy.int_t] center(self, int col, int row)
-    cdef object cache(self, int col, int row)
-    cpdef object block(self, double x, double y)
-    cdef object cell(self, double x, double y)
-    cpdef get(self, double x, double y)
-
-    cpdef object get_neighbor(self, int col, int row, double pos_x, double pos_y)
+    cdef Frame frame(self, Grid_Pos pos, Size size)
+    cdef object get_cell_data(self, Grid_Pos cell)
+    cdef Pos center(self, Grid_Pos cell)
+    cdef object cache(self, Grid_Pos cell)
+    cdef Grid_Pos block(self, Pos p)
+    cdef Grid_Pos cell(self, Pos p)
+    cpdef get(self, Pos p)
+    cdef object cache_block(self, Grid_Pos cell, Grid_Pos block)
+    cpdef object get_neighbor(self, Grid_Pos block, Pos p)
 
 cdef class Metric_Cache :
     cdef public char* path
@@ -39,3 +53,7 @@ cdef class Metric_Cache :
     cdef object load(self, char* dir = ?)
     cdef create_thumbnail(self, char* path, int thumb_x, int thumb_y)
     cdef create_image(self, char* path, int max_size, char* metric)
+    cdef object save(self, char* dir = ?)
+    cdef object get(self, int x, int y, int radius, object options = ?)
+
+

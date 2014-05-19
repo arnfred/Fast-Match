@@ -185,18 +185,21 @@ def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8), f
         if stop_at != None and i > stop_at :
             break
         # Plot target grid
-        ((x_min_cell, x_max_cell), (y_min_cell, y_max_cell)) = d["target_cell"]
-        ((x_min_block, x_max_block), (y_min_block, y_max_block)) = d["target_block"]
+        cell = d["target_cell"]
+        block = d["target_block"]
+        query_pos = d["current_pos"][:2]
         #margin = d["margin"]
         # Add square
-        ax.add_patch(pylab.Rectangle( translate_point((x_min_cell, y_min_cell), "im2"),
-                               (x_max_cell-x_min_cell) * scale, (y_max_cell-y_min_cell) * scale, color="#0055aa", fill = False))
-        ax.add_patch(pylab.Rectangle( translate_point((x_min_block+2, y_min_block+2), "im2"),
-                               (x_max_block-x_min_block-4) * scale, (y_max_block-y_min_block-4) * scale, color="#000055", fill = False))
+        ax.add_patch(pylab.Rectangle( translate_point((cell.get_x_min(), cell.get_y_min()), "im2"),
+                               (cell.get_x_max()-cell.get_x_min()) * scale, (cell.get_y_max()-cell.get_y_min()) * scale, color="#0055aa", fill = False))
+        ax.add_patch(pylab.Rectangle( translate_point((block.get_x_min()+2, block.get_y_min()+2), "im2"),
+                               (block.get_x_max()-block.get_x_min()-4) * scale, (block.get_y_max()-block.get_y_min()-4) * scale, color="#000055", fill = False))
         # Add circle
-        ax.add_patch(pylab.Circle( translate_point(d["query_pos"], "im1"), d["radius"] * scale, fill = False, linewidth = 0.5))
+        ax.add_patch(pylab.Circle( translate_point(query_pos, "im1"), d["radius"] * scale, fill = False, linewidth = 0.5))
         # Add matches
-        for pos_q, pos_t in d["matches"] :
+        for match in d["matches"] :
+            pos_q = match[:2]
+            pos_t = match[2:]
             x1, x2 = numpy.array([pos_q[0], pos_t[0]]) * s
             y1, y2 = numpy.array([pos_q[1], pos_t[1]]) * s
             ax.plot([x1, x2+offset_x], [y1,y2], color="#2595e3", lw=1)
