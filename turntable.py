@@ -13,7 +13,7 @@ Jonas Toft Arnfred, 2013-11-18
 
 import numpy
 from cache import Metric_Cache
-from turntable_ground_truth import get_turntable_path
+from turntable_ground_truth import get_turntable_path, point_to_index
 import imaging
 import pandas as pd
 
@@ -36,6 +36,7 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
 
     # Get distance_threshold
     verbose                 = options.get("evaluate_verbose", False)
+    print_path              = options.get("print_path", False)
 
     # Get paths to the three images
     def get_path(i) : return {
@@ -44,59 +45,60 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
             "C" : get_turntable_path(object_type, angles[1] + i*360, "Bottom")
         }
 
-    if verbose :
-        print("matching\n%s\n%s" %(get_path(0)["A"], get_path(0)["C"]))
-
     # Get paths
     def get_match_fun(i) :
         # Collect matches
         paths = get_path(i)
         query_path, target_path = paths["A"], paths["C"]
         query_cache, target_img = Metric_Cache(query_path), imaging.open_img(target_path)
-        return match_fun(query_cache, target_img, options = options)
+        matches = match_fun(query_cache, target_img, options = options)(thresholds[-1])
+        return lambda tau : [m for m in matches if m["ratio"] < tau]
+
+    if print_path :
+        paths = get_path(0)
+        print("query_path = '%s'" % paths["A"])
+        print("target_path = '%s'" % paths["C"])
 
     # Get matches
     match_funs = map(get_match_fun, range(3))
     matches_df = pd.DataFrame({ img : { tau : f(tau) for tau in thresholds } for img, f in enumerate(match_funs) })
-    print(range(1))
 
     # function for counting correct and total
     def get_correct(row) :
         gt = ground_truth["correspondences"][row.name]
-        def gt_int(k) : return [map(int,p) for (p, d) in gt.get(k, [])]
-        def pos_int(v) : return map(int, v["positions"][1])
-        def count_correct(matches) : return sum([pos_int(v) in gt_int(k) for k, v in matches])
+        def gt_int(p_A) : return [map(int,p) for p, d in gt.get(point_to_index(p_A), [])]
+        def pos_int(m) : return map(int, m["positions"][1])
+        def count_correct(matches) : return sum([pos_int(m) in gt_int(m["positions"][0]) for m in matches])
         return row.map(count_correct)
     correct = matches_df.apply(get_correct).sum(axis=1)
     def get_total(row) :
         gt = ground_truth["correspondences"][row.name]
         def count_total(matches) :
-            return sum([len(gt.get(k, [])) > 0 for k, v in matches])
+            return sum([len(gt.get(point_to_index(m["positions"][0]), [])) > 0 for m in matches])
         return row.map(count_total)
+    def nb_matches(row) :
+        return row.map(len)
     total = matches_df.apply(get_total).sum(axis=1)
+    matches = matches_df.apply(nb_matches).sum(axis=1)
     # Get accuracy
     precision = correct / total
     recall = correct / ground_truth["nb_correspondences"]
 
+    if verbose :
+        print("""%16s %s: %6i correct of %6i total (%i Matches).\t Precision: %.3f - Recall: %.3f (median)""" % (
+                  object_type,
+                  angles,
+                  sum(correct),
+                  sum(total),
+                  sum(matches),
+                  numpy.median(precision),
+                  numpy.median(recall)))
 
     return { "precision" : precision, "recall" : recall, "correct" : correct, "total" : total }
 
-def is_correct(ground_truth, positions, img, index) :
-    gt = ground_truth["correspondences"][img].get(index,[])
-    gt_int = [map(int,p) for p in gt]
-    pos_int = map(int, positions[1])
-    print("Is %s in %s?" % (pos_int, gt_int))
-    return pos_int in gt_int
-
-def is_counted(ground_truth, positions, img, index) :
-    gt = ground_truth["correspondences"][img].get(index,[])
-    return len(gt) > 0
 
 
-
-
-
-def evaluate_objects(match_fun, angles, object_types, thresholds, ground_truth_data = None, options = {}) :
+def evaluate_objects(match_fun, angles, object_types, thresholds, ground_truth_data, options = {}) :
     """ Returns number of correct and total matches of match_fun on objects:
         match_fun : Function (Function that takes a list of paths and returns matches)
         angles : (Int, Int) (two angles in degrees. Must be divisible by 5)
@@ -106,7 +108,7 @@ def evaluate_objects(match_fun, angles, object_types, thresholds, ground_truth_d
     """
     # Get correct and total matches for different thresholds at current angle_increment
     def get_results(object_type) :
-        gt = None if ground_truth_data == None else ground_truth_data[object_type]
+        gt = ground_truth_data[object_type]
         return evaluate(match_fun, angles, object_type, thresholds, gt, options)
 
 
@@ -122,10 +124,13 @@ def evaluate_objects(match_fun, angles, object_types, thresholds, ground_truth_d
 
 def get_weights(gt, exclude_keys = []) :
     """ Calculate a set of weights per object and index item (usually angle) """
-    nb_corr_accu = { a : sum(map(lambda data : data["nb_correspondences"], gt_item.values())) for a, gt_item in gt.iteritems() if a not in exclude_keys }
-    weights = { a : { o : 1.0 / (t["nb_correspondences"] / float(nb_corr_accu[a])) for o, t in gt_item.iteritems() } for a, gt_item in gt.iteritems() if a not in exclude_keys }
+    nb_corr_accu = { a : sum(map(lambda data : data["nb_correspondences"], gt_item.values()))
+                    for a, gt_item in gt.iteritems() if a not in exclude_keys }
+    weights = { a : { o : 1.0 / (t["nb_correspondences"] / float(nb_corr_accu[a]))
+                     for o, t in gt_item.iteritems() } for a, gt_item in gt.iteritems() if a not in exclude_keys }
     weights_sum = { a : numpy.sum(ow.values()) for a, ow in weights.iteritems() }
-    weights_normalize = { a : { o : w / weights_sum[a] for o,w in ow.iteritems() } for a,ow in weights.iteritems() }
+    weights_normalize = { a : { o : w / weights_sum[a]
+                               for o,w in ow.iteritems() } for a,ow in weights.iteritems() }
     return weights_normalize
 
 

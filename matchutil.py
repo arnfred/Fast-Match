@@ -11,6 +11,7 @@ Jonas Toft Arnfred, 2013-05-05
 ####################################
 
 import cv2
+import numpy
 
 
 #########################################
@@ -36,6 +37,8 @@ def get_descriptors(data, keypoints, descriptor_type = "SIFT") :
 
 def bf_match(dt1, dt2, k = 1, options = {}) :
     """ Use opencv's matcher to bruteforce nearest neighbors """
+    if dt1.dtype != numpy.uint8 : dt1 = numpy.array(dt1, dtype=numpy.uint8)
+    if dt2.dtype != numpy.uint8 : dt2 = numpy.array(dt2, dtype=numpy.uint8)
     crossCheck = k == 1 and options.get("crossCheck", False) == True
     matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck)
     return matcher.knnMatch(dt1, dt2, k = k)
@@ -57,12 +60,11 @@ def flann_match(dt1, dt2, k = 1, options = {}) :
     #    "autotuned" : 255,
     #    "default"   : 1
     #},
+    if dt1.dtype != numpy.float32 : dt1 = numpy.array(dt1, dtype=numpy.float32)
+    if dt2.dtype != numpy.float32 : dt2 = numpy.array(dt2, dtype=numpy.float32)
     index_params = dict(algorithm = algorithm, trees = trees)
     search_params = dict(checks = checks)
     flann = cv2.FlannBasedMatcher(index_params, search_params)
-    print(k)
-    print(type(dt1))
-    print(type(dt2))
 
     # Match features
     return flann.knnMatch(dt1, dt2, k)

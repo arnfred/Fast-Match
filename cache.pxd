@@ -5,9 +5,6 @@ Jonas Toft Arnfred, 2013-05-08
 """
 cimport numpy
 
-cdef class Grid_Pos :
-    cdef int row, col
-
 cdef class Pos :
     cdef int x, y
 
@@ -35,15 +32,17 @@ cdef class Grid_Cache :
     cdef object cells
     cdef object blocks
     # Methods
-    cdef Frame frame(self, Grid_Pos pos, Size size)
-    cdef object get_cell_data(self, Grid_Pos cell)
-    cdef Pos center(self, Grid_Pos cell)
-    cdef object cache(self, Grid_Pos cell)
-    cdef Grid_Pos block(self, Pos p)
-    cdef Grid_Pos cell(self, Pos p)
+    cdef Frame frame(self, int row, int col, Size size)
+    cdef object get_cell_data(self, int row, int col)
+    cdef Pos center(self, int row, int col)
+    cdef object cache(self, int row, int col)
+    cdef object block(self, Pos p)
+    cdef object cell(self, Pos p)
     cpdef get(self, Pos p)
-    cdef object cache_block(self, Grid_Pos cell, Grid_Pos block)
-    cpdef object get_neighbor(self, Grid_Pos block, Pos p)
+    cdef object cache_block(self, int cell_row, int cell_col, int block_row, int block_col)
+    cpdef object get_neighbor(self, int row, int col, Pos p)
+    cdef neighbors_square(self, int n)
+    cdef square_to_block(self, int n, int row, int col)
 
 cdef class Metric_Cache :
     cdef public char* path
@@ -57,3 +56,11 @@ cdef class Metric_Cache :
     cdef object get(self, int x, int y, int radius, object options = ?)
 
 
+cdef class Feature_Cache :
+    cdef public char* path
+    cdef public object image
+    # methods
+    cdef object load(self, char* dir = ?)
+    cdef create_image(self, char* path, int max_size, char* metric)
+    cdef object save(self, char* dir = ?)
+    cdef object get(self, numpy.ndarray[numpy.uint8_t, ndim=2] descriptors, int k)
