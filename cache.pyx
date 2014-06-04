@@ -114,8 +114,8 @@ cdef class Grid_Cache :
         # Get keypoints and descriptors
         positions, descriptors = self.get_cell_data(cell_row, cell_col)
         # Check if we have any positions (This check is needed)
-        if len(positions) == 0 or (len(positions) == 1 and len(positions[0]) == 0) :
-            self.blocks[block_row][block_col] = positions.reshape((1,0)), descriptors.reshape((1,0))
+        if len(positions) == 0 :
+            self.blocks[block_row][block_col] = positions, descriptors
             return
         # If we have, filter them and check again
         m = self.margin
@@ -292,6 +292,7 @@ cdef class Metric_Cache :
         self.path = path
         self.thumb = {}
         self.original = {}
+        self.img_data = imaging.open_img(path, max_size)
         # check if the path exists
         if not force_reload and self.load() : return
         # Create thumbnail and image
@@ -390,13 +391,10 @@ cdef class Metric_Cache :
 
     cdef create_image(self, char* path, int max_size, char* metric) :
         """ Match an image with itself finding the closest neighbors within that image """
-        cdef numpy.ndarray[numpy.uint8_t, ndim=3] img_data
         cdef numpy.ndarray[numpy.int_t, ndim=1] distances
         cdef numpy.ndarray[numpy.double_t, ndim=2] positions
-        # Open image
-        img_data = imaging.open_img(path, max_size)
         # Get descriptors
-        keypoints, descriptors = matchutil.get_features(img_data)
+        keypoints, descriptors = matchutil.get_features(self.img_data)
         # Match
         matches = matchutil.flann_match(descriptors, descriptors, k=2)
         # Distances and positions
@@ -410,7 +408,7 @@ cdef class Metric_Cache :
             "positions" : positions,
             "distances" : distances,
             "position_tree" : position_tree,
-            "size" : (img_data.shape[1], img_data.shape[0])
+            "size" : (self.img_data.shape[1], self.img_data.shape[0])
         }
 
 
@@ -441,13 +439,15 @@ cdef class Feature_Cache :
         self.save()
 
 
-    cdef object get(self, numpy.ndarray[numpy.uint8_t, ndim=2] descriptors, int k) :
+    #cdef object get(self, numpy.ndarray[numpy.uint8_t, ndim=2] descriptors, int k) :
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] get(self) :
         """ Retrieve all features within radius of position """
         # Get relevant options and position tree
-        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck = False)
-        matches = bf.knnMatch(descriptors, self.image["descriptors"], k = k)
-        cdef int index = k - 1
-        return [m[index].distance for m in matches]
+        return self.image["descriptors"]
+        #bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck = False)
+        #matches = bf.knnMatch(descriptors, self.image["descriptors"], k = k)
+        #cdef int index = k - 1
+        #return [m[index].distance for m in matches]
 
 
     cdef object save(self, char* dir = "data/image_data") :
@@ -490,7 +490,7 @@ cdef class Feature_Cache :
         # Get descriptors
         keypoints, descriptors = matchutil.get_features(img_data)
         # Collect data
-        self.original = {
+        self.image = {
             "descriptors" : numpy.array(descriptors, dtype=numpy.uint8),
             "size" : (img_data.shape[1], img_data.shape[0])
         }

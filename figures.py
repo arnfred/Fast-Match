@@ -151,7 +151,7 @@ def getRedGreen(f) :
     return c
 
 
-def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8), filename = None) :
+def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8), filename = None, alt = False) :
     # Prepare images
     if scale == None :
         scale = min(1.0, 600 / float(im1.shape[1]))
@@ -184,19 +184,36 @@ def visualize_log(log, im1, im2, stop_at = None, scale = None, size = (14, 8), f
         # Enough?
         if stop_at != None and i > stop_at :
             break
-        # Plot target grid
-        cell = d["target_cell"]
-        block = d["target_block"]
-        query_pos = d["current_pos"][:2]
-        #margin = d["margin"]
-        # Add square
-        ax.add_patch(pylab.Rectangle( translate_point((cell.get_x_min(), cell.get_y_min()), "im2"),
-                               (cell.get_x_max()-cell.get_x_min()) * scale, (cell.get_y_max()-cell.get_y_min()) * scale, color="#0055aa", fill = False))
-        ax.add_patch(pylab.Rectangle( translate_point((block.get_x_min()+2, block.get_y_min()+2), "im2"),
-                               (block.get_x_max()-block.get_x_min()-4) * scale, (block.get_y_max()-block.get_y_min()-4) * scale, color="#000055", fill = False))
-        # Add circle
-        ax.add_patch(pylab.Circle( translate_point(query_pos, "im1"), d["radius"] * scale, fill = False, linewidth = 0.5))
-        # Add matches
+        if alt :
+            # Plot target grid
+            q_cell = d["query_cell"]
+            q_block = d["query_block"]
+            t_cell = d["target_cell"]
+            t_block = d["target_block"]
+            #margin = d["margin"]
+            # Add squares
+            ax.add_patch(pylab.Rectangle( translate_point((q_cell.get_x_min(), q_cell.get_y_min()), "im1"),
+                                (q_cell.get_x_max()-q_cell.get_x_min()) * scale, (q_cell.get_y_max()-q_cell.get_y_min()) * scale, color="#0055aa", fill = False))
+            ax.add_patch(pylab.Rectangle( translate_point((q_block.get_x_min()+2, q_block.get_y_min()+2), "im1"),
+                                (q_block.get_x_max()-q_block.get_x_min()-4) * scale, (q_block.get_y_max()-q_block.get_y_min()-4) * scale, color="#000055", fill = False))
+            ax.add_patch(pylab.Rectangle( translate_point((t_cell.get_x_min(), t_cell.get_y_min()), "im2"),
+                                (t_cell.get_x_max()-t_cell.get_x_min()) * scale, (t_cell.get_y_max()-t_cell.get_y_min()) * scale, color="#0055aa", fill = False))
+            ax.add_patch(pylab.Rectangle( translate_point((t_block.get_x_min()+2, t_block.get_y_min()+2), "im2"),
+                                (t_block.get_x_max()-t_block.get_x_min()-4) * scale, (t_block.get_y_max()-t_block.get_y_min()-4) * scale, color="#000055", fill = False))
+        else :
+            # Plot target grid
+            cell = d["target_cell"]
+            block = d["target_block"]
+            query_pos = d["current_pos"][:2]
+            #margin = d["margin"]
+            # Add square
+            ax.add_patch(pylab.Rectangle( translate_point((cell.get_x_min(), cell.get_y_min()), "im2"),
+                                (cell.get_x_max()-cell.get_x_min()) * scale, (cell.get_y_max()-cell.get_y_min()) * scale, color="#0055aa", fill = False))
+            ax.add_patch(pylab.Rectangle( translate_point((block.get_x_min()+2, block.get_y_min()+2), "im2"),
+                                (block.get_x_max()-block.get_x_min()-4) * scale, (block.get_y_max()-block.get_y_min()-4) * scale, color="#000055", fill = False))
+            # Add circle
+            ax.add_patch(pylab.Circle( translate_point(query_pos, "im1"), d["radius"] * scale, fill = False, linewidth = 0.5))
+            # Add matches
         for match in d["matches"] :
             pos_q = match[:2]
             pos_t = match[2:]

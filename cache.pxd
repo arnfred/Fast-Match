@@ -48,6 +48,7 @@ cdef class Metric_Cache :
     cdef public char* path
     cdef public object thumb
     cdef public object original
+    cdef public object img_data
     # methods
     cdef object load(self, char* dir = ?)
     cdef create_thumbnail(self, char* path, int thumb_x, int thumb_y)
@@ -63,4 +64,5 @@ cdef class Feature_Cache :
     cdef object load(self, char* dir = ?)
     cdef create_image(self, char* path, int max_size, char* metric)
     cdef object save(self, char* dir = ?)
-    cdef object get(self, numpy.ndarray[numpy.uint8_t, ndim=2] descriptors, int k)
+    #cdef object get(self, numpy.ndarray[numpy.uint8_t, ndim=2] descriptors, int k)
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] get(self)

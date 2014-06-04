@@ -7,5 +7,8 @@ from distutils.core import setup
 from Cython.Build import cythonize
 
 setup(
-    ext_modules = cythonize(["cache.pyx", "fastmatch.pyx", "turntable_ground_truth.pyx"])
+    ext_modules = cythonize(["cache.pyx",
+                             "fastmatch.pyx",
+                             "fastmatch_alt.pyx",
+                             "turntable_ground_truth.pyx"])
 )
