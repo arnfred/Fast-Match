@@ -49,6 +49,9 @@ def evaluate(match_fun, angles, object_type, thresholds, ground_truth = None, op
     def get_match_fun(i) :
         # Collect matches
         paths = get_path(i)
+        if "baseline_fun" in options :
+            options["baseline_cache"] = options["baseline_fun"](object_type, angles[0] + i*360)
+            #print("With baseline cache: %s" % options["baseline_cache"].path)
         query_path, target_path = paths["A"], paths["C"]
         query_cache, target_img = Metric_Cache(query_path), imaging.open_img(target_path)
         matches = match_fun(query_cache, target_img, options = options)(thresholds[-1])

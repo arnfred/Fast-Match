@@ -41,15 +41,13 @@ def match(Metric_Cache query_data,
     cdef numpy.ndarray[numpy.uint8_t, ndim=3] query_img
     cdef Feature_Cache baseline_cache
     # Get parameters
-    thumb_x, thumb_y    = options.get("thumb_size",     (400, 400))
-    grid_x, grid_y      = options.get("grid_size",      (50, 50))
-    thumb_tau           = options.get("thumb_tau",      1.0)
-    neighbor_tau        = options.get("neighbor_tau",   0.9)
+    thumb_x, thumb_y    = options.get("thumb_size",     (300, 300))
+    grid_x, grid_y      = options.get("grid_size",      (90, 90))
+    thumb_tau           = options.get("thumb_tau",      0.8)
+    neighbor_tau        = options.get("neighbor_tau",   0.8)
     log                 = options.get("log",            None)
     grid_margin         = options.get("grid_margin",    25)
-    radius              = options.get("radius",         100)
-    dist_threshold      = options.get("dist_threshold", 100)
-    depth_first         = options.get("depth_first",    True)
+    baseline_related    = options.get("related",    True)
     baseline_cache      = options["baseline_cache"]
     # Create target cache
     query_img = query_data.img_data
@@ -66,7 +64,7 @@ def match(Metric_Cache query_data,
                           tau               = tau,
                           neighbor_tau      = neighbor_tau,
                           radius            = radius,
-                          dist_threshold    = dist_threshold,
+                          baseline_related  = baseline_related,
                           log               = log)
         return matches
     return get_matches
@@ -79,7 +77,7 @@ cdef object do_iter(object positions,
                     double tau,
                     double neighbor_tau,
                     int radius,
-                    int dist_threshold,
+                    baseline_related = True,
                     object log = None) :
     # Declare datatypes
     cdef numpy.ndarray[numpy.double_t] ratios, pos
@@ -105,7 +103,8 @@ cdef object do_iter(object positions,
                                                     baseline_ds,
                                                     q_row,
                                                     q_col,
-                                                    baseline_cache)
+                                                    baseline_cache,
+                                                    baseline_related)
                 neighbors = []
                 for pos in result_pos[ratios < neighbor_tau] : # pos is in format [query_x, query_y, target_x, target_y]
                     for p_neighbor in target_cache.get_neighbor(t_row, t_col, Pos(pos[2],pos[3])) :
@@ -195,8 +194,9 @@ cdef match_position(object pos,
                     numpy.ndarray[numpy.uint8_t, ndim=2] baseline_ds,
                     int row,
                     int col,
-                    object baseline_cache) :
-    cdef int target_x, target_y, query_x, query_y
+                    object baseline_cache,
+                    object baseline_related) :
+    cdef int target_x, target_y, query_x, query_y, index
     cdef numpy.ndarray[numpy.double_t, ndim=2] positions, target_pos, query_pos
     cdef numpy.ndarray[numpy.double_t, ndim=1] ratios, query_dis
     cdef numpy.ndarray[numpy.uint8_t, ndim=2] target_ds, query_ds
@@ -220,7 +220,9 @@ cdef match_position(object pos,
         query_dis = baseline_cache[(row, col)]
     else :
         matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
-        query_dis = numpy.array([m[1].distance for m in matcher.knnMatch(query_ds, baseline_ds, k=2)], dtype=numpy.double)
+        k = 2 if baseline_related else 1
+        index = k - 1
+        query_dis = numpy.array([m[index].distance for m in matcher.knnMatch(query_ds, baseline_ds, k=k)], dtype=numpy.double)
         baseline_cache[(row, col)] = query_dis
 
     # Distances to nearest neighbor and positions
