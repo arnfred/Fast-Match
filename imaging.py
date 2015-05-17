@@ -11,7 +11,6 @@ Jonas Toft Arnfred, 2013-04-22
 ####################################
 
 from PIL import Image
-from vipsCC.VImage import VImage
 import cv2
 import numpy
 
@@ -55,18 +54,6 @@ class scale_pil_antialias(scale_pil) :
         self.img.thumbnail(new_size, Image.ANTIALIAS)
         return self.img
 
-class scale_vips(scale) :
-    def open(self, path) : return VImage(path)
-    def from_array(self, data) : return data
-    def get_size(self) : return (self.img.Xsize(), self.img.Ysize())
-    def scale(self, size = (200, 200)) :
-        new_size = self.resize(size)
-        ratio = float(new_size[0]) / self.width
-        scaled = self.img.affinei_all("nearest", ratio, 0, 0, ratio, 0, 0)
-        data = scaled.tobuffer()
-        return numpy.reshape(numpy.array(data, dtype=numpy.uint8), (scaled.Xsize(), scaled.Ysize(), 3))
-
-
 class scale_cv(scale) :
     """ scale with opencv (fastest for rescaling image slightly) """
     def open(self, path) : return cv2.imread(path)
@@ -86,10 +73,6 @@ def get_size(path) :
 
 def open_pil(path) :
     return numpy.array(Image.open(path), dtype=numpy.uint8)
-
-def open_vips(path) :
-    img = VImage(path)
-    return numpy.reshape(numpy.array(img.tobuffer(), dtype=numpy.uint8), (img.Xsize(), img.Ysize(), 3))
 
 def open_cv(path) :
     return cv2.imread(path)

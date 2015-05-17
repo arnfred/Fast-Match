@@ -194,6 +194,8 @@ cdef class Metric_Cache :
         cdef object h = hashlib.new('ripemd160')
         h.update(self.path)
         cdef object data_path = h.hexdigest()
+        if not os.path.exists(dir):
+            os.makedirs(dir)
         # Save data
         numpy.savez("%s/%s" % (dir, data_path),
                     descriptors = self.original["descriptors"],
