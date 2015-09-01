@@ -12,6 +12,17 @@ only computing features in those parts of the image that can
 be confidently matched. Fast-Match is an order of magnitude faster than the popular Ratio-Match, yet often doubles
 matching precision for difficult image pairs.
 
+## Paper and Attribution
+
+You can find the paper presenting this work here: [Fast Match](http://stefan.winkler.net/Publications/icip2015fm.pdf).
+
+If you make use of this code or ideas expressed in the paper, please cite the following paper:
+```
+J. T. Arnfred, S. Winkler.
+Fast-Match: Fast and robust feature matching on large images. 
+Proc. IEEE International Conference on Image Processing (ICIP), Québec City, Canada, Sept. 27-30, 2015.
+```
+
 ## How to install
 
 Just git clone it
